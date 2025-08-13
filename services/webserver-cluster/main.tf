@@ -9,7 +9,7 @@ locals {
 }
 
 resource "aws_launch_template" "example" {
-  image_id      = "ami-0fb653ca2d3203ac1"
+  image_id      = var.ami
   instance_type = var.instance_type
 
   # Render the user_data.sh script as a template
@@ -17,8 +17,10 @@ resource "aws_launch_template" "example" {
     server_port = var.server_port
     db_address  = data.terraform_remote_state.db.outputs.address
     db_port     = data.terraform_remote_state.db.outputs.port
+    server_text = var.server_text
   }))
 
+  
   vpc_security_group_ids = [aws_security_group.instance.id]
 
   lifecycle {
@@ -82,6 +84,9 @@ resource "aws_lb_target_group" "asg" {
 }
 
 resource "aws_autoscaling_group" "example" {
+  name = "${var.cluster_name}-${aws_launch_template.example.name}"
+  min_elb_capacity = var.min_size
+
   launch_template {
     id = aws_launch_template.example.id
   }
@@ -107,6 +112,10 @@ resource "aws_autoscaling_group" "example" {
       propagate_at_launch = true
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_autoscaling_schedule" "scale_out_during_business_hours" {
@@ -117,7 +126,7 @@ resource "aws_autoscaling_schedule" "scale_out_during_business_hours" {
   max_size               = 10
   desired_capacity       = 10
   recurrence             = "0 9 * * *"
-  autoscaling_group_name = module.webserver_cluster.asg_name
+  autoscaling_group_name = aws_autoscaling_group.example.name
 }
 
 resource "aws_autoscaling_schedule" "scale_in_at_night" {
@@ -128,7 +137,7 @@ resource "aws_autoscaling_schedule" "scale_in_at_night" {
   max_size               = 10
   desired_capacity       = 2
   recurrence             = "0 17 * * *"
-  autoscaling_group_name = module.webserver_cluster.asg_name
+  autoscaling_group_name = aws_autoscaling_group.example.name
 }
 
 resource "aws_security_group" "alb" {
